@@ -142,10 +142,18 @@ public static class ServiceExtensions
         services.AddScoped<IWorkspaceService, WorkspaceService>();
     }
     public static void AddApplicationServices(this IServiceCollection services)
-{
-    services.AddScoped<IAuthService, AuthService>();
-    services.AddScoped<IProfileService, ProfileService>();
-    services.AddScoped<IWorkspaceService, WorkspaceService>();
-    services.AddScoped<IInvitationService, InvitationService>();
-}
+    {
+        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IProfileService, ProfileService>();
+        services.AddScoped<IWorkspaceService, WorkspaceService>();
+        services.AddScoped<IInvitationService, InvitationService>();
+    }
+    public static void AddApplicationServices(this IServiceCollection services)
+    {
+        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IProfileService, ProfileService>();
+        services.AddScoped<IWorkspaceService, WorkspaceService>();
+        services.AddScoped<IInvitationService, InvitationService>();
+        services.AddScoped<ITaskService, TaskService>();
+    }
 }
