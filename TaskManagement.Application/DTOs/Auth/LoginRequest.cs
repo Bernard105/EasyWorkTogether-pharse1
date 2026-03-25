@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace TaskManagement.Application.DTOs.Auth;
 
-public class RegisterRequest
+public class LoginRequest
 {
     [Required]
     [EmailAddress]
@@ -11,13 +11,12 @@ public class RegisterRequest
     public string Email { get; set; } = string.Empty;
 
     [Required]
-    [MinLength(8)]
-    [RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$", ErrorMessage = "Password must contain at least one uppercase, one lowercase, and one number")]
     [JsonPropertyName("password")]
     public string Password { get; set; } = string.Empty;
 
-    [Required]
-    [MaxLength(100)]
-    [JsonPropertyName("name")]
-    public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("remember_me")]
+    public bool RememberMe { get; set; }
+
+    [JsonPropertyName("captcha_token")]
+    public string? CaptchaToken { get; set; }
 }

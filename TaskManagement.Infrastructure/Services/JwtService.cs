@@ -13,37 +13,37 @@ public class JwtService : IJwtService
 {
     private readonly JwtSettings _jwtSettings;
     private readonly SymmetricSecurityKey _key;
-    
+
     public JwtService(IOptions<JwtSettings> jwtSettings)
     {
         _jwtSettings = jwtSettings.Value;
         _key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));
     }
-    
+
     public string GenerateAccessToken(int userId, string email, string name, Guid sessionId)
     {
         var claims = new[]
         {
             new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
             new Claim(JwtRegisteredClaimNames.Email, email),
+            new Claim(ClaimTypes.Email, email),
             new Claim("name", name),
+            new Claim(ClaimTypes.Name, name),
             new Claim("sid", sessionId.ToString()),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
-        
+
         var credentials = new SigningCredentials(_key, SecurityAlgorithms.HmacSha256);
-        
+
         var token = new JwtSecurityToken(
-            issuer: null,
-            audience: null,
             claims: claims,
             expires: DateTime.UtcNow.AddMinutes(_jwtSettings.AccessTokenExpirationMinutes),
-            signingCredentials: credentials
-        );
-        
+            signingCredentials: credentials);
+
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
-    
+
     public ClaimsPrincipal? ValidateAccessToken(string token)
     {
         var tokenHandler = new JwtSecurityTokenHandler();
@@ -56,18 +56,17 @@ public class JwtService : IJwtService
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
         };
-        
+
         try
         {
-            var principal = tokenHandler.ValidateToken(token, validationParameters, out _);
-            return principal;
+            return tokenHandler.ValidateToken(token, validationParameters, out _);
         }
         catch
         {
             return null;
         }
     }
-    
+
     public string HashRefreshToken(string refreshToken)
     {
         using var sha256 = SHA256.Create();
@@ -75,7 +74,7 @@ public class JwtService : IJwtService
         var hash = sha256.ComputeHash(bytes);
         return Convert.ToBase64String(hash);
     }
-    
+
     public bool VerifyRefreshToken(string refreshToken, string hash)
     {
         var hashedInput = HashRefreshToken(refreshToken);

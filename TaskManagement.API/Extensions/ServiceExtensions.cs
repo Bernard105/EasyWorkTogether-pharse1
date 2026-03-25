@@ -1,14 +1,18 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using System.Text;
+using TaskManagement.Application.Interfaces;
+using TaskManagement.Application.Services;
 using TaskManagement.Core.Interfaces;
 using TaskManagement.Core.Models;
 using TaskManagement.Infrastructure;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Infrastructure.Services;
-using TaskManagement.API.Middleware;
 
 namespace TaskManagement.API.Extensions;
 
@@ -19,30 +23,31 @@ public static class ServiceExtensions
         services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
     }
-    
+
     public static void AddRepositories(this IServiceCollection services)
     {
         services.AddScoped<IUnitOfWork, UnitOfWork>();
     }
-    
+
     public static void AddServices(this IServiceCollection services, IConfiguration configuration)
     {
-        // JWT Settings
-        var jwtSettings = new JwtSettings();
-        configuration.GetSection("JwtSettings").Bind(jwtSettings);
-        services.AddSingleton(jwtSettings);
-        
+        services.Configure<JwtSettings>(configuration.GetSection("JwtSettings"));
+        services.AddSingleton(sp => sp.GetRequiredService<IOptions<JwtSettings>>().Value);
+
+        services.AddHttpContextAccessor();
         services.AddScoped<IJwtService, JwtService>();
         services.AddScoped<IPasswordService, PasswordService>();
         services.AddScoped<IAuditService, AuditService>();
-        services.AddHttpContextAccessor();
+        services.AddScoped<IAuthService, AuthService>();
     }
-    
+
     public static void AddJwtAuthentication(this IServiceCollection services, IConfiguration configuration)
     {
-        var jwtSettings = configuration.GetSection("JwtSettings").Get<JwtSettings>();
-        var key = Encoding.UTF8.GetBytes(jwtSettings!.Secret);
-        
+        var jwtSettings = configuration.GetSection("JwtSettings").Get<JwtSettings>()
+            ?? throw new InvalidOperationException("JwtSettings configuration is missing.");
+
+        var key = Encoding.UTF8.GetBytes(jwtSettings.Secret);
+
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
@@ -53,24 +58,49 @@ public static class ServiceExtensions
                     ValidateIssuer = false,
                     ValidateAudience = false,
                     ValidateLifetime = true,
-                    ClockSkew = TimeSpan.Zero
+                    ClockSkew = TimeSpan.Zero,
+                    NameClaimType = ClaimTypes.NameIdentifier
                 };
-                
+
                 options.Events = new JwtBearerEvents
                 {
                     OnMessageReceived = context =>
                     {
-                        var token = context.Request.Headers["Authorization"].FirstOrDefault()?.Split(" ").Last();
-                        if (!string.IsNullOrEmpty(token))
+                        var token = context.Request.Headers["Authorization"].FirstOrDefault()?.Split(' ').Last();
+                        if (!string.IsNullOrWhiteSpace(token))
                         {
                             context.Token = token;
                         }
+
                         return Task.CompletedTask;
+                    },
+                    OnTokenValidated = async context =>
+                    {
+                        var sidClaim = context.Principal?.FindFirst("sid")?.Value;
+                        var subClaim = context.Principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                                       ?? context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+                        if (!Guid.TryParse(sidClaim, out var sessionId) || !int.TryParse(subClaim, out var userId))
+                        {
+                            context.Fail("Invalid token claims.");
+                            return;
+                        }
+
+                        var unitOfWork = context.HttpContext.RequestServices.GetRequiredService<IUnitOfWork>();
+                        var activeSession = (await unitOfWork.UserSessions.FindAsync(s =>
+                            s.SessionId == sessionId &&
+                            s.UserId == userId &&
+                            s.Status == "active")).FirstOrDefault();
+
+                        if (activeSession == null)
+                        {
+                            context.Fail("Session is not active.");
+                        }
                     }
                 };
             });
     }
-    
+
     public static void AddSwagger(this IServiceCollection services)
     {
         services.AddSwaggerGen(c =>
@@ -95,7 +125,7 @@ public static class ServiceExtensions
                             Id = "Bearer"
                         }
                     },
-                    new string[] { }
+                    Array.Empty<string>()
                 }
             });
         });
