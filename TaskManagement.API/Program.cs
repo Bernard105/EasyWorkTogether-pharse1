@@ -12,6 +12,8 @@ builder.Services.AddDatabase(builder.Configuration);
 builder.Services.AddRepositories();
 builder.Services.AddServices(builder.Configuration);
 builder.Services.AddJwtAuthentication(builder.Configuration);
+// Add to the service registration section
+builder.Services.AddApplicationServices();
 
 var app = builder.Build();
 
